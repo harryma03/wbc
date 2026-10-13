@@ -63,18 +63,13 @@ def position_command_b_error_exp(
     return torch.exp(-torch.sum(torch.square(ee_pos_err) / (std**2), dim=1))
 
 
-def position_command_error_exp(
+def _position_command_mixed_error(
     env: ManagerBasedRLEnv,
     command_name: str,
-    std: float,
     asset_cfg: SceneEntityCfg,
     link0_name: str = "link0",
 ) -> torch.Tensor:
-    """Reward end-effector position tracking in a mixed coordinate frame.
-
-    XY error is computed in the link0 frame, Z error is computed in the world frame.
-    This is used for WBC (Whole-Body Control) where z commands are absolute heights.
-    """
+    """Return XYZ error with link-frame XY and world-frame Z."""
     asset: RigidObject = env.scene[asset_cfg.name]
     ee_id = asset_cfg.body_ids[0]
     link0_id, _ = asset.find_bodies(link0_name)
@@ -92,20 +87,50 @@ def position_command_error_exp(
     pos_error_xy = end_effector_curr_pos_link0[:, :2] - command[:, :2]
     # Z error in world frame
     pos_error_z = (ee_pos_w[:, 2] - command[:, 2]).unsqueeze(1)
-    pos_error = torch.cat([pos_error_xy, pos_error_z], dim=-1)
+    return torch.cat([pos_error_xy, pos_error_z], dim=-1)
+
+
+def position_command_error_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    link0_name: str = "link0",
+) -> torch.Tensor:
+    """Penalize WBC position error with a dense L2 signal at every distance."""
+    pos_error = _position_command_mixed_error(env, command_name, asset_cfg, link0_name)
+    return torch.linalg.vector_norm(pos_error, dim=-1)
+
+
+def position_command_error_exp(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg,
+    link0_name: str = "link0",
+) -> torch.Tensor:
+    """Reward WBC position tracking with a fine-grained exponential kernel."""
+    pos_error = _position_command_mixed_error(env, command_name, asset_cfg, link0_name)
 
     error_sq = torch.sum(torch.square(pos_error), dim=1)
     return torch.exp(-error_sq / (std**2))
 
 
 def orientation_command_error(
-    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    reference_body_name: str | None = None,
 ) -> torch.Tensor:
     """Penalize end-effector orientation error using the shortest-path quaternion distance."""
     asset: RigidObject = env.scene[asset_cfg.name]
     command = env.command_manager.get_command(command_name)
     des_quat_b = command[:, 3:7]
-    des_quat_w = quat_mul(asset.data.root_quat_w, des_quat_b)
+    if reference_body_name is None:
+        reference_quat_w = asset.data.root_quat_w
+    else:
+        reference_id = asset.find_bodies(reference_body_name)[0][0]
+        reference_quat_w = asset.data.body_quat_w[:, reference_id]
+    des_quat_w = quat_mul(reference_quat_w, des_quat_b)
     curr_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids[0]]
     return quat_error_magnitude(curr_quat_w, des_quat_w)
 

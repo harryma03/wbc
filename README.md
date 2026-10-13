@@ -40,6 +40,7 @@ Legged robots with manipulation arms present unique challenges — coordinating 
 | GO1-WX250S | Unitree Go1 | WX250S | <img src="./docs/imgs/go1_wx250s.png" alt="go1_wx250s" width="75"> |
 | GO2-ARX5 | Unitree Go2 | ARX-X5 | <img src="./docs/imgs/go2_arx5.png" alt="go2_arx5" width="75"> |
 | GO2-PIPER | Unitree Go2 | Agilex Piper | <img src="./docs/imgs/go2_piper.png" alt="go2_piper" width="75"> |
+| TITATIT-PIPER | TITATIT wheeled quadruped | Agilex Piper | [Setup guide (Chinese)](docs/TITATIT_PIPER_CN.md) |
 | ... | ... | ... | ... |
 
 Each platform supports the following **2** training modes:
@@ -128,6 +129,10 @@ python scripts/rsl_rl/train.py --task GO2-PIPER-Flat --num_envs 4096 --headless 
 
 # Whole-body control training
 python scripts/rsl_rl/train.py --task GO2-PIPER-WBC --num_envs 4096 --headless --max_iterations 5000
+
+# TITATIT wheeled quadruped + Piper (convert the USD first; see docs/TITATIT_PIPER_CN.md)
+python scripts/rsl_rl/train.py --task TITATIT-PIPER-Flat --num_envs 4096 --headless --max_iterations 5000
+python scripts/rsl_rl/train.py --task TITATIT-PIPER-WBC --num_envs 4096 --headless --max_iterations 5000
 ```
 
 ### Play / Inference

@@ -50,9 +50,14 @@ _build
 .lastformat
 
 # RL-Games
+**/log/
 **/runs/*
 **/logs/*
 **/recordings/*
+
+# Local configuration backups and large generated TITATIT mesh asset.
+*.bak_*
+/source/LeggedManip_Lab/LeggedManip_Lab/assets/titatit_piper/configuration/titatit_piper_base.usd
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/

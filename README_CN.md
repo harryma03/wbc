@@ -40,6 +40,7 @@
 | GO1-WX250S | Unitree Go1 | WX250S | <img src="./docs/imgs/go1_wx250s.png" alt="go1_wx250s" width="75"> |
 | GO2-ARX5 | Unitree Go2 | ARX-X5 | <img src="./docs/imgs/go2_arx5.png" alt="go2_arx5" width="75"> |
 | GO2-PIPER | Unitree Go2 | Agilex Piper | <img src="./docs/imgs/go2_piper.png" alt="go2_piper" width="75"> |
+| TITATIT-PIPER | TITATIT 四轮足 | Agilex Piper | [接入说明](docs/TITATIT_PIPER_CN.md) |
 | ... | ... | ... | ... |
 每个平台支持以下 **2** 种训练模式：
 
@@ -129,6 +130,10 @@ python scripts/rsl_rl/train.py --task GO2-PIPER-Flat --num_envs 4096 --headless 
 
 # 全身控制训练
 python scripts/rsl_rl/train.py --task GO2-PIPER-WBC --num_envs 4096 --headless --max_iterations 5000
+
+# TITATIT 四轮足 + Piper（先执行 docs/TITATIT_PIPER_CN.md 中的 USD 转换）
+python scripts/rsl_rl/train.py --task TITATIT-PIPER-Flat --num_envs 4096 --headless --max_iterations 5000
+python scripts/rsl_rl/train.py --task TITATIT-PIPER-WBC --num_envs 4096 --headless --max_iterations 5000
 ```
 
 ### 推理 / 策略评估

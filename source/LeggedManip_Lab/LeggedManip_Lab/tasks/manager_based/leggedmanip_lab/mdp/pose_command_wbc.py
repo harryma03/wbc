@@ -144,11 +144,7 @@ class UniformPoseWBCCommand(CommandTerm):
         self.pose_command[env_ids, 1] = y_lim[0] + rand_pos[:, 1] * (y_lim[1] - y_lim[0]) # base frame
         self.pose_command[env_ids, 2] = z_lim[0] + rand_pos[:, 2] * (z_lim[1] - z_lim[0]) # world frame
 
-        # ── Sample orientation (original logic unchanged) ──────────────────
-        roll_lim  = torch.tensor(self.cfg.limit_ranges.roll,  device=self.device)
-        pitch_lim = torch.tensor(self.cfg.limit_ranges.pitch, device=self.device)
-        yaw_lim   = torch.tensor(self.cfg.limit_ranges.yaw,   device=self.device)
-
+        # ── Sample orientation ───────────────────────────────
         pos_b = torch.zeros(num_resample, 3, device=self.device)
         rand_euler = torch.rand(num_resample, 3, device=self.device)
         euler_angles = torch.zeros(num_resample, 3, device=self.device)
@@ -166,6 +162,19 @@ class UniformPoseWBCCommand(CommandTerm):
         # Direction vector in world frame
         delta_w = target_pos_w - link0_pos_w  # [M, 3]
 
+        # A rectangular XYZ range includes corner samples outside a spherical
+        # arm workspace. Project them back into the configured reach limit and
+        # write the reachable target back in the mixed command frame.
+        max_radius = self.cfg.workspace_max_radius
+        if max_radius is not None:
+            distance = torch.linalg.vector_norm(delta_w, dim=-1, keepdim=True)
+            scale = torch.clamp(max_radius / distance.clamp_min(1.0e-6), max=1.0)
+            delta_w = delta_w * scale
+            target_pos_w = link0_pos_w + delta_w
+            target_pos_link0 = quat_apply_inverse(link0_quat_w, delta_w)
+            self.pose_command[env_ids, :2] = target_pos_link0[:, :2]
+            self.pose_command[env_ids, 2] = target_pos_w[:, 2]
+
         # Transform to link0 frame
         delta_b = quat_apply_inverse(link0_quat_w, delta_w)  # [M, 3]
 
@@ -173,13 +182,35 @@ class UniformPoseWBCCommand(CommandTerm):
         pitch = -torch.atan2(delta_b[:, 2], dist_xy)
         yaw   =  torch.atan2(delta_b[:, 1], delta_b[:, 0])
 
-        euler_angles[:, 0] = roll_lim[0] + rand_euler[:, 0] * (roll_lim[1] - roll_lim[0])
-        euler_angles[:, 1] = pitch + (pitch_lim[0] + rand_euler[:, 1] * (pitch_lim[1] - pitch_lim[0]))
-        euler_angles[:, 2] = yaw   + (yaw_lim[0]   + rand_euler[:, 2] * (yaw_lim[1]   - yaw_lim[0]))
+        # Use active ranges so orientation difficulty follows curriculum.
+        roll_range = torch.tensor(self.cfg.ranges.roll, device=self.device)
+        pitch_range = torch.tensor(self.cfg.ranges.pitch, device=self.device)
+        yaw_range = torch.tensor(self.cfg.ranges.yaw, device=self.device)
+        roll_offset = roll_range[0] + rand_euler[:, 0] * (
+            roll_range[1] - roll_range[0]
+        )
+        pitch_offset = pitch_range[0] + rand_euler[:, 1] * (
+            pitch_range[1] - pitch_range[0]
+        )
+        yaw_offset = yaw_range[0] + rand_euler[:, 2] * (
+            yaw_range[1] - yaw_range[0]
+        )
+
+        euler_angles[:, 0] = roll_offset
+        euler_angles[:, 1] = pitch + pitch_offset
+        euler_angles[:, 2] = yaw + yaw_offset
 
         euler_angles = torch.clamp(euler_angles, -3.14 / 4, 3.14 / 3)
 
-        quat = quat_from_euler_xyz(euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2])
+        look_at_quat = quat_from_euler_xyz(
+            euler_angles[:, 0], euler_angles[:, 1], euler_angles[:, 2]
+        )
+        tool_frame_offset = torch.tensor(
+            self.cfg.tool_frame_offset,
+            device=self.device,
+            dtype=look_at_quat.dtype,
+        ).expand(num_resample, -1)
+        quat = quat_mul(look_at_quat, tool_frame_offset)
 
         if self.cfg.make_quat_unique:
             self.pose_command[env_ids, 3:] = quat_unique(quat)

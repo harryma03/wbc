@@ -48,6 +48,15 @@ class UniformPoseWBCCommandCfg(UniformPoseCommandBaseCfg):
     link_name: str = "link0"
     """The name of the root body, which serves as the reference frame for the command."""
     curriculum_enabled: bool = False
+    workspace_max_radius: float | None = None
+    """Optional spherical reach limit measured from ``link_name`` in meters."""
+    tool_frame_offset: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+    """Quaternion (w, x, y, z) from the look-at frame to the tool body frame.
+
+    The look-at construction aligns its local +X axis with the target direction.
+    Robots whose physical tool axis is different can supply a fixed offset here
+    without changing the command convention for other assets.
+    """
 
 
 # -- velocity

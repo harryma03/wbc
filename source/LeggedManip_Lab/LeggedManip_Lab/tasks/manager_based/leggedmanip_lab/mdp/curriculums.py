@@ -33,10 +33,64 @@ def _safe_update_range(
         setattr(target_obj, attr_name, new_val.tolist())
 
 
+def _manipulation_gate_ready(
+    env,
+    env_ids: Sequence[int],
+    position_reward_term_name: str | None,
+    position_success_threshold: float,
+    orientation_reward_term_name: str | None,
+    orientation_error_threshold: float | None,
+) -> bool:
+    """Gate locomotion curricula on manipulation accuracy when configured.
+
+    All arguments are optional so existing robot configurations retain their
+    original locomotion curriculum behavior.
+    """
+    if position_reward_term_name is not None:
+        position_sums = env.reward_manager._episode_sums.get(
+            position_reward_term_name
+        )
+        if position_sums is None:
+            return False
+        position_reward = (
+            torch.mean(position_sums[env_ids]) / env.max_episode_length_s
+        )
+        position_cfg = env.reward_manager.get_term_cfg(position_reward_term_name)
+        if position_reward <= position_cfg.weight * position_success_threshold:
+            return False
+
+    if (
+        orientation_reward_term_name is not None
+        and orientation_error_threshold is not None
+    ):
+        orientation_sums = env.reward_manager._episode_sums.get(
+            orientation_reward_term_name
+        )
+        if orientation_sums is None:
+            return False
+        orientation_cfg = env.reward_manager.get_term_cfg(
+            orientation_reward_term_name
+        )
+        if orientation_cfg.weight == 0.0:
+            return False
+        orientation_reward = (
+            torch.mean(orientation_sums[env_ids]) / env.max_episode_length_s
+        )
+        mean_orientation_error = orientation_reward / orientation_cfg.weight
+        if mean_orientation_error >= orientation_error_threshold:
+            return False
+
+    return True
+
+
 def ang_vel_cmd_levels(
     env,  # : ManagerBasedRLEnv
     env_ids: Sequence[int],
     reward_term_name: str = "track_ang_vel_z_exp",
+    position_reward_term_name: str | None = None,
+    position_success_threshold: float = 0.9,
+    orientation_reward_term_name: str | None = None,
+    orientation_error_threshold: float | None = None,
 ) -> torch.Tensor:
     cfg = env.command_manager.get_term("base_velocity").cfg
 
@@ -71,7 +125,15 @@ def ang_vel_cmd_levels(
             reward = torch.mean(reward_sums[env_ids]) / env.max_episode_length_s
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            if reward > reward_term_cfg.weight * 0.8:
+            manipulation_ready = _manipulation_gate_ready(
+                env,
+                env_ids,
+                position_reward_term_name,
+                position_success_threshold,
+                orientation_reward_term_name,
+                orientation_error_threshold,
+            )
+            if reward > reward_term_cfg.weight * 0.8 and manipulation_ready:
                 delta_command = torch.tensor([-0.05, 0.05], device=env.device)
                 _safe_update_range(
                     ranges, limit_ranges, "ang_vel_z", delta_command, env.device
@@ -84,6 +146,10 @@ def lin_vel_cmd_levels(
     env,
     env_ids: Sequence[int],
     reward_term_name: str = "track_lin_vel_xy_exp",
+    position_reward_term_name: str | None = None,
+    position_success_threshold: float = 0.9,
+    orientation_reward_term_name: str | None = None,
+    orientation_error_threshold: float | None = None,
 ) -> torch.Tensor:
     cfg = env.command_manager.get_term("base_velocity").cfg
 
@@ -120,7 +186,15 @@ def lin_vel_cmd_levels(
             reward = torch.mean(reward_sums[env_ids]) / env.max_episode_length_s
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            if reward > reward_term_cfg.weight * 0.8:
+            manipulation_ready = _manipulation_gate_ready(
+                env,
+                env_ids,
+                position_reward_term_name,
+                position_success_threshold,
+                orientation_reward_term_name,
+                orientation_error_threshold,
+            )
+            if reward > reward_term_cfg.weight * 0.8 and manipulation_ready:
                 # print(f"Episode ended. Reward: {reward:.4f}, Threshold: {reward_term_cfg.weight * 0.8:.4f}")
 
                 # -- Update velocity range --
@@ -158,6 +232,10 @@ def pos_cmd_levels(
     env,
     env_ids: Sequence[int],
     reward_term_name: str = "end_effector_position_tracking_exp",
+    success_threshold: float = 0.8,
+    position_step: float = 0.05,
+    orientation_reward_term_name: str | None = None,
+    orientation_error_threshold: float | None = None,
 ) -> torch.Tensor:
     cfg = env.command_manager.get_term("ee_pose").cfg
 
@@ -193,8 +271,38 @@ def pos_cmd_levels(
             reward = torch.mean(reward_sums[env_ids]) / env.max_episode_length_s
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            if reward > reward_term_cfg.weight * 0.8:
-                pos_delta = torch.tensor([-0.05, 0.05], device=env.device)
+            orientation_ready = True
+            if (
+                orientation_reward_term_name is not None
+                and orientation_error_threshold is not None
+            ):
+                orientation_ready = False
+                orientation_sums = env.reward_manager._episode_sums.get(
+                    orientation_reward_term_name
+                )
+                if orientation_sums is not None:
+                    orientation_reward = (
+                        torch.mean(orientation_sums[env_ids])
+                        / env.max_episode_length_s
+                    )
+                    orientation_cfg = env.reward_manager.get_term_cfg(
+                        orientation_reward_term_name
+                    )
+                    if orientation_cfg.weight != 0.0:
+                        mean_orientation_error = (
+                            orientation_reward / orientation_cfg.weight
+                        )
+                        orientation_ready = (
+                            mean_orientation_error < orientation_error_threshold
+                        )
+
+            if (
+                reward > reward_term_cfg.weight * success_threshold
+                and orientation_ready
+            ):
+                pos_delta = torch.tensor(
+                    [-position_step, position_step], device=env.device
+                )
                 ori_delta = torch.tensor([-3.14 / 18, 3.14 / 18], device=env.device)
                 force_delta = torch.tensor([-5.0, 5.0], device=env.device)
 
