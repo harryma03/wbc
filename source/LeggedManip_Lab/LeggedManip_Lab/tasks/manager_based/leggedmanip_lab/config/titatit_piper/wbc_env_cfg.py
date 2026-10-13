@@ -82,22 +82,29 @@ class TitatitPiperWBCEnvCfg(Go2PiperWBCEnvCfg):
             ".*_hip_joint": 0.25,
             ".*_thigh_joint": 0.25,
             ".*_calf_joint": 0.25,
-            "joint1": 0.75,
-            "joint2": 1.50,
-            "joint3": 1.50,
-            "joint[4-6]": 1.0,
+            "joint1": math.radians(135.0),
+            "joint2": math.radians(162.0),
+            "joint3": math.radians(153.0),
+            "joint[45]": math.radians(80.1),
+            "joint6": math.radians(108.0),
         }
-        # USD limits: j2 [0, pi], j3 [-2.967, 0]; the other arm
-        # joints have symmetric limits wider than the selected target range.
+        # 90% of the USD angular endpoints (not Isaac Lab's centered soft
+        # limit formula). Validated by scripts/tools/check_titatit_workspace.py.
+        # Preserve the one-sided j2/j3 limits and zero-pose action offsets.
         self.actions.joint_pos.clip = {
             ".*_hip_joint": (-10.0, 10.0),
             ".*_thigh_joint": (-10.0, 10.0),
             ".*_calf_joint": (-10.0, 10.0),
-            "joint1": (-0.75, 0.75),
-            "joint2": (0.0, 1.50),
-            "joint3": (-1.50, 0.0),
-            "joint[4-6]": (-1.0, 1.0),
+            "joint1": (-math.radians(135.0), math.radians(135.0)),
+            "joint2": (0.0, math.radians(162.0)),
+            "joint3": (-math.radians(153.0), 0.0),
+            "joint[45]": (-math.radians(80.1), math.radians(80.1)),
+            "joint6": (-math.radians(108.0), math.radians(108.0)),
         }
+        # Match the wheel actuator's configured velocity ceiling; the former
+        # 12 rad/s target clip could restrict the expanded base-speed task.
+        self.actions.wheel_vel.scale = 25.0
+        self.actions.wheel_vel.clip = {".*": (-25.0, 25.0)}
 
         self.commands.ee_pose.debug_vis = False
         self.commands.base_velocity.debug_vis = False
@@ -121,15 +128,19 @@ class TitatitPiperWBCEnvCfg(Go2PiperWBCEnvCfg):
             math.sqrt(0.5),
             0.0,
         )
-        self.commands.ee_pose.ranges.pos_x = (0.15, 0.35)
+        self.commands.ee_pose.ranges.pos_x = (0.25, 0.35)
         self.commands.ee_pose.ranges.pos_y = (-0.10, 0.10)
         self.commands.ee_pose.ranges.pos_z = (0.58, 0.74)
         self.commands.ee_pose.ranges.roll = (0.0, 0.0)
         self.commands.ee_pose.ranges.pitch = (0.0, 0.0)
         self.commands.ee_pose.ranges.yaw = (0.0, 0.0)
-        self.commands.ee_pose.limit_ranges.pos_x = (0.10, 0.50)
-        self.commands.ee_pose.limit_ranges.pos_y = (-0.22, 0.22)
-        self.commands.ee_pose.limit_ranges.pos_z = (0.50, 0.80)
+        # USD-chain IK audit at base height 0.30 m, with the same look-at
+        # orientation and 0.60 m projection as the command generator.
+        # Expand forward/laterally; avoid near-base targets with poor pose IK.
+        # This is a sampled kinematic envelope, not collision certification.
+        self.commands.ee_pose.limit_ranges.pos_x = (0.25, 0.55)
+        self.commands.ee_pose.limit_ranges.pos_y = (-0.30, 0.30)
+        self.commands.ee_pose.limit_ranges.pos_z = (0.50, 0.82)
         self.commands.ee_pose.limit_ranges.roll = (0.0, 0.0)
         self.commands.ee_pose.limit_ranges.pitch = (0.0, 0.0)
         self.commands.ee_pose.limit_ranges.yaw = (0.0, 0.0)
@@ -140,12 +151,12 @@ class TitatitPiperWBCEnvCfg(Go2PiperWBCEnvCfg):
         self.commands.base_velocity.resampling_time_range = (10.0, 10.0)
         self.commands.base_velocity.rel_standing_envs = 0.10
         self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.05, 0.15)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.20, 0.20)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.10, 0.10)
-        self.commands.base_velocity.limit_ranges.lin_vel_x = (-0.15, 0.15)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.20, 0.20)
+        self.commands.base_velocity.limit_ranges.lin_vel_x = (-1.0, 1.0)
         self.commands.base_velocity.limit_ranges.lin_vel_y = (0.0, 0.0)
-        self.commands.base_velocity.limit_ranges.ang_vel_z = (-0.10, 0.10)
+        self.commands.base_velocity.limit_ranges.ang_vel_z = (-1.0, 1.0)
 
         # Keep manipulation, locomotion, and posture on comparable scales.
         # The previous EE weight of 15 made a heavily tilted base profitable.
